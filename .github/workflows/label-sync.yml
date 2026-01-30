@@ -28,14 +28,12 @@ jobs:
           SOURCE_REPO: Achrobat/Workflow-Repo
 
           # Comma-separated repo names (NOT nameWithOwner)
-          # Example: "label-source-repo,do-not-touch,archived-repo"
           BLACKLIST: "Workflow-Repo"
         run: |
           set -euo pipefail
 
           echo "Fetching labels from source repo: $SOURCE_REPO"
 
-          # Fetch ALL labels from the source repo (pagination normalized into a single array)
           src_labels=$(gh api -H "Accept: application/vnd.github+json" \
             "/repos/$SOURCE_REPO/labels?per_page=100" --paginate \
             | jq -s 'add')
@@ -48,10 +46,8 @@ jobs:
             exit 1
           fi
 
-          # Build a lowercase set of source label names ONCE (used for default deletion guard)
           src_set=$(echo "$src_labels" | jq -r '.[].name | ascii_downcase' | sort -u)
 
-          # Build blacklist set
           IFS=',' read -r -a bl <<< "${BLACKLIST}"
           is_blacklisted() {
             local name="$1"
@@ -66,13 +62,13 @@ jobs:
 
           echo "Listing repos in org: $ORG"
 
-          # List repos in org (skip archived) — normalize pagination into a single array
           repos=$(gh api -H "Accept: application/vnd.github+json" \
             "/orgs/$ORG/repos?per_page=100" --paginate \
             | jq -s 'add | .[] | select(.archived == false) | .name')
 
           synced=0
           skipped=0
+          noaccess=0
 
           for repo in $repos; do
             if is_blacklisted "$repo"; then
@@ -84,30 +80,35 @@ jobs:
             echo ""
             echo "== Syncing labels to $ORG/$repo =="
 
-            # Fetch target labels once (used for both default deletion + case-insensitive update)
-            # IMPORTANT: normalize pagination into a single JSON array with jq -s 'add'
-            tgt_json=$(gh api -H "Accept: application/vnd.github+json" \
-              "/repos/$ORG/$repo/labels?per_page=100" --paginate \
-              | jq -s 'add')
+            # ---- Guarded fetch: some repos will 404 if the App isn't installed / lacks access ----
+            set +e
+            tgt_raw=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/$ORG/$repo/labels?per_page=100" --paginate 2>&1)
+            status=$?
+            set -e
 
-            # TSV: "<lowercase>\t<actual>"
+            if [ $status -ne 0 ]; then
+              # Typically "gh: Not Found (HTTP 404)" for no access
+              echo "  Skipping (no access or not found): $tgt_raw"
+              noaccess=$((noaccess + 1))
+              continue
+            fi
+
+            tgt_json=$(printf '%s' "$tgt_raw" | jq -s 'add')
             tgt_map=$(echo "$tgt_json" | jq -r '.[] | [.name|ascii_downcase, .name] | @tsv')
 
             echo "  Deleting unwanted default labels (only if not present in source)..."
 
-            # Defaults to remove (case-insensitive compare)
             DEFAULTS=("bug" "documentation" "duplicate" "enhancement" "good first issue" "help wanted" "invalid" "question" "wontfix")
 
             for def in "${DEFAULTS[@]}"; do
               def_lc=$(printf '%s' "$def" | tr '[:upper:]' '[:lower:]')
 
-              # If the source repo already has this label name (case-insensitive), DO NOT delete it.
               if echo "$src_set" | grep -Fxq "$def_lc"; then
                 echo "    keeping (in source): $def"
                 continue
               fi
 
-              # Find any target label(s) whose lowercase name matches this default and delete the actual name
               while IFS=$'\t' read -r lc actual; do
                 [ "$lc" = "$def_lc" ] || continue
                 enc_actual=$(printf '%s' "$actual" | jq -sRr @uri)
@@ -120,15 +121,12 @@ jobs:
               done <<< "$tgt_map"
             done
 
-            # Apply each source label to target repo (case-insensitive update to avoid Bug vs bug issues)
             echo "$src_labels" | jq -c '.[] | {name, color, description}' | while read -r label; do
               name=$(echo "$label" | jq -r '.name')
               color=$(echo "$label" | jq -r '.color')
               desc=$(echo "$label" | jq -r '.description // ""')
 
               name_lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
-
-              # If target already has same label with different case, patch the existing one.
               existing="$(echo "$tgt_map" | awk -F'\t' -v k="$name_lc" '$1==k{print $2; exit}')"
               patch_name="${existing:-$name}"
 
@@ -154,5 +152,6 @@ jobs:
 
           echo ""
           echo "Done."
-          echo "Repos synced:  $synced"
-          echo "Repos skipped: $skipped"
+          echo "Repos synced:   $synced"
+          echo "Repos skipped:  $skipped"
+          echo "No access/404:  $noaccess"
