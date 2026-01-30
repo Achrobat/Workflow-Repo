@@ -90,22 +90,44 @@ jobs:
 
             echo ""
             echo "== Syncing labels to $ORG/$repo =="
-            echo "  Deleting unwanted default labels (if present)..."
 
-            # Comma-separated list of labels to delete
-            DELETE_LABELS="bug,documentation,duplicate,enhancement,good first issue,help wanted,invalid,question,wontfix"
+            echo "  Deleting unwanted default labels (only if not present in source)..."
 
-            IFS=',' read -r -a del <<< "$DELETE_LABELS"
-            for lname in "${del[@]}"; do
-              lname="$(echo "$lname" | sed 's/^ *//;s/ *$//')"
-              enc_lname=$(printf '%s' "$lname" | jq -sRr @uri)
+            # Defaults to remove (case-insensitive compare)
+            DEFAULTS="bug,documentation,duplicate,enhancement,good first issue,help wanted,invalid,question,wontfix"
 
-              if gh api -X DELETE -H "Accept: application/vnd.github+json" \
-                "/repos/$ORG/$repo/labels/$enc_lname" >/dev/null 2>&1; then
-                echo "    deleted: $lname"
-              else
-                echo "    (not present): $lname"
+            # Build a lowercase set of source label names
+            src_set=$(echo "$src_labels" | jq -r '.[].name' | tr '[:upper:]' '[:lower:]' | sort -u)
+
+            # Fetch target labels (name list)
+            tgt_labels=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/$ORG/$repo/labels?per_page=100" --paginate \
+              | jq -r '.[].name')
+
+            IFS=',' read -r -a defaults <<< "$DEFAULTS"
+            for def in "${defaults[@]}"; do
+              def="$(echo "$def" | sed 's/^ *//;s/ *$//')"
+              def_lc=$(printf '%s' "$def" | tr '[:upper:]' '[:lower:]')
+
+              # If the source repo already has this label name (case-insensitive), DO NOT delete it.
+              if echo "$src_set" | grep -Fxq "$def_lc"; then
+                echo "    keeping (in source): $def"
+                continue
               fi
+
+              # Find any target label(s) whose lowercase name matches this default
+              while IFS= read -r lname; do
+                lname_lc=$(printf '%s' "$lname" | tr '[:upper:]' '[:lower:]')
+                if [ "$lname_lc" = "$def_lc" ]; then
+                  enc_lname=$(printf '%s' "$lname" | jq -sRr @uri)
+                  if gh api -X DELETE -H "Accept: application/vnd.github+json" \
+                    "/repos/$ORG/$repo/labels/$enc_lname" >/dev/null 2>&1; then
+                    echo "    deleted: $lname"
+                  else
+                    echo "    FAILED delete: $lname"
+                  fi
+                fi
+              done <<< "$tgt_labels"
             done
 
             # Apply each source label to target repo
