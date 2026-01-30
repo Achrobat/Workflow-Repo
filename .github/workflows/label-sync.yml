@@ -1,4 +1,4 @@
-name: Sync labels across org (blacklist)
+name: Sync Labels (ORG S)
 
 on:
   workflow_dispatch:
