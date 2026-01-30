@@ -15,9 +15,9 @@ jobs:
         uses: actions/create-github-app-token@v1
         id: app-token
         with:
-           app-id: ${{ secrets.LABEL_SYNC_APP_ID }}
-           private-key: ${{ secrets.LABEL_SYNC_PRIVATE_KEY }}
-           owner: Achrobat
+          app-id: ${{ secrets.LABEL_SYNC_APP_ID }}
+          private-key: ${{ secrets.LABEL_SYNC_PRIVATE_KEY }}
+          owner: Achrobat
 
       - name: Sync labels to all repos (except blacklist)
         env:
@@ -46,7 +46,7 @@ jobs:
               break
             fi
             src_labels=$(jq -s '.[0] + .[1]' <(echo "$src_labels") <(echo "$chunk"))
-            page=$((page+1))
+            page=$((page + 1))
           done
 
           total=$(echo "$src_labels" | jq 'length')
@@ -62,7 +62,6 @@ jobs:
           is_blacklisted() {
             local name="$1"
             for x in "${bl[@]}"; do
-              # trim spaces
               x="$(echo "$x" | sed 's/^ *//;s/ *$//')"
               if [ "$name" = "$x" ]; then
                 return 0
@@ -85,43 +84,54 @@ jobs:
           for repo in $repos; do
             if is_blacklisted "$repo"; then
               echo "Skipping blacklisted repo: $ORG/$repo"
-              skipped=$((skipped+1))
+              skipped=$((skipped + 1))
               continue
             fi
 
             echo ""
             echo "== Syncing labels to $ORG/$repo =="
+            echo "  Deleting unwanted default labels (if present)..."
+
+            # Comma-separated list of labels to delete
+            DELETE_LABELS="bug,documentation,duplicate,enhancement,good first issue,help wanted,invalid,question,wontfix"
+
+            IFS=',' read -r -a del <<< "$DELETE_LABELS"
+            for lname in "${del[@]}"; do
+              lname="$(echo "$lname" | sed 's/^ *//;s/ *$//')"
+              enc_lname=$(printf '%s' "$lname" | jq -sRr @uri)
+
+              if gh api -X DELETE -H "Accept: application/vnd.github+json" \
+                "/repos/$ORG/$repo/labels/$enc_lname" >/dev/null 2>&1; then
+                echo "    deleted: $lname"
+              else
+                echo "    (not present): $lname"
+              fi
+            done
 
             # Apply each source label to target repo
-            # Create if missing; update if exists (color/description)
-            # NOTE: We do NOT delete extra labels in target.
             echo "$src_labels" | jq -c '.[] | {name, color, description}' | while read -r label; do
               name=$(echo "$label" | jq -r '.name')
               color=$(echo "$label" | jq -r '.color')
               desc=$(echo "$label" | jq -r '.description // ""')
 
-              # URL-encode label name for the endpoint path (spaces etc)
               enc_name=$(printf '%s' "$name" | jq -sRr @uri)
 
-              # Try update first (works if label exists)
               if gh api -X PATCH -H "Accept: application/vnd.github+json" \
                 "/repos/$ORG/$repo/labels/$enc_name" \
                 -f new_name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1; then
                 echo "  updated: $name"
               else
-                # If update fails (likely missing), create it
                 if gh api -X POST -H "Accept: application/vnd.github+json" \
                   "/repos/$ORG/$repo/labels" \
                   -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1; then
                   echo "  created: $name"
                 else
                   echo "  FAILED: $name"
-                  # Don't exit the whole job for a single label; keep going
                 fi
               fi
             done
 
-            synced=$((synced+1))
+            synced=$((synced + 1))
           done
 
           echo ""
