@@ -1,10 +1,11 @@
-name: Sync Labels (Test)
+name: Sync Labels
 
 on:
   workflow_dispatch:
 
 permissions:
   issues: write
+  contents: read
 
 jobs:
   sync:
@@ -17,12 +18,29 @@ jobs:
           app-id: ${{ secrets.LABEL_SYNC_APP_ID }}
           private-key: ${{ secrets.LABEL_SYNC_PRIVATE_KEY }}
 
+      - name: Compute target repos (blacklist)
+        id: repos
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: Achrobat
+          BLACKLIST: "label-source-repo"
+        run: |
+          repos=$(gh repo list "$ORG" --limit 1000 --json nameWithOwner,isArchived \
+            --jq '.[] | select(.isArchived == false) | .nameWithOwner')
+
+          pattern=$(echo "$BLACKLIST" | tr ',' '|')
+          targets=$(echo "$repos" | grep -Ev "$pattern" || true)
+
+          {
+            echo "targets<<EOF"
+            echo "$targets"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Sync labels
         uses: EndBug/label-sync@v2
         with:
           token: ${{ steps.app-token.outputs.token }}
           source-repo: Achrobat/label-source-repo
-          target-repos: |
-            Achrobat/repo-one
-            Achrobat/repo-two
+          target-repos: ${{ steps.repos.outputs.targets }}
           delete-other-labels: false
