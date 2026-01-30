@@ -25,11 +25,11 @@ jobs:
 
           # === Configure these ===
           ORG: Achrobat
-          SOURCE_REPO: Achrobat/Test-Repo
+          SOURCE_REPO: Achrobat/Workflow-Repo
 
           # Comma-separated repo names (NOT nameWithOwner)
           # Example: "label-source-repo,do-not-touch,archived-repo"
-          BLACKLIST: "Test-Repo"
+          BLACKLIST: "Workflow-Repo"
         run: |
           set -euo pipefail
 
