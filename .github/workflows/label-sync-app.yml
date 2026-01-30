@@ -1,0 +1,159 @@
+name: Sync Labels (GitHub App)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.LABEL_SYNC_APP_ID }}
+          private-key: ${{ secrets.LABEL_SYNC_APP_PRIVATE_KEY }}
+          owner: Achrobat  # ensures token scopes to the org installation
+
+      - name: Sync labels to all repos (except blacklist)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+          # === Configure these ===
+          ORG: Achrobat
+          SOURCE_REPO: Achrobat/Workflow-Repo
+          BLACKLIST: "Workflow-Repo"
+        run: |
+          set -euo pipefail
+
+          echo "Fetching labels from source repo: $SOURCE_REPO"
+
+          # Fetch ALL labels from the source repo (handles pagination)
+          src_labels="[]"
+          page=1
+          while : ; do
+            chunk=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/$SOURCE_REPO/labels?per_page=100&page=$page")
+            count=$(echo "$chunk" | jq 'length')
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+            src_labels=$(jq -s '.[0] + .[1]' <(echo "$src_labels") <(echo "$chunk"))
+            page=$((page + 1))
+          done
+
+          total=$(echo "$src_labels" | jq 'length')
+          echo "Source labels found: $total"
+
+          if [ "$total" -eq 0 ]; then
+            echo "No labels found in source repo; aborting."
+            exit 1
+          fi
+
+          # Build blacklist set
+          IFS=',' read -r -a bl <<< "${BLACKLIST}"
+          is_blacklisted() {
+            local name="$1"
+            for x in "${bl[@]}"; do
+              x="$(echo "$x" | sed 's/^ *//;s/ *$//')"
+              if [ "$name" = "$x" ]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          echo "Listing repos in org: $ORG"
+
+          # List repos in org (skip archived)
+          repos=$(gh api -H "Accept: application/vnd.github+json" \
+            "/orgs/$ORG/repos?per_page=100&page=1" --paginate \
+            | jq -r '.[] | select(.archived == false) | .name')
+
+          synced=0
+          skipped=0
+          failed=0
+
+          for repo in $repos; do
+            if is_blacklisted "$repo"; then
+              echo "Skipping blacklisted repo: $ORG/$repo"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo ""
+            echo "== Syncing labels to $ORG/$repo =="
+
+            echo "  Deleting unwanted default labels (only if not present in source)..."
+
+            # Defaults to remove (case-insensitive compare)
+            DEFAULTS="bug,documentation,duplicate,enhancement,good first issue,help wanted,invalid,question,wontfix"
+
+            # Build a lowercase set of source label names
+            src_set=$(echo "$src_labels" | jq -r '.[].name' | tr '[:upper:]' '[:lower:]' | sort -u)
+
+            # Fetch target labels (name list)
+            tgt_labels=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/$ORG/$repo/labels?per_page=100" --paginate \
+              | jq -r '.[].name')
+
+            IFS=',' read -r -a defaults <<< "$DEFAULTS"
+            for def in "${defaults[@]}"; do
+              def="$(echo "$def" | sed 's/^ *//;s/ *$//')"
+              def_lc=$(printf '%s' "$def" | tr '[:upper:]' '[:lower:]')
+
+              # If the source repo already has this label name (case-insensitive), DO NOT delete it.
+              if echo "$src_set" | grep -Fxq "$def_lc"; then
+                echo "    keeping (in source): $def"
+                continue
+              fi
+
+              # Find any target label(s) whose lowercase name matches this default
+              while IFS= read -r lname; do
+                lname_lc=$(printf '%s' "$lname" | tr '[:upper:]' '[:lower:]')
+                if [ "$lname_lc" = "$def_lc" ]; then
+                  enc_lname=$(printf '%s' "$lname" | jq -sRr @uri)
+                  if gh api -X DELETE -H "Accept: application/vnd.github+json" \
+                    "/repos/$ORG/$repo/labels/$enc_lname" >/dev/null 2>&1; then
+                    echo "    deleted: $lname"
+                  else
+                    echo "    FAILED delete: $lname"
+                  fi
+                fi
+              done <<< "$tgt_labels"
+            done
+
+            # Apply each source label to target repo
+            echo "$src_labels" | jq -c '.[] | {name, color, description}' | while read -r label; do
+              name=$(echo "$label" | jq -r '.name')
+              color=$(echo "$label" | jq -r '.color')
+              desc=$(echo "$label" | jq -r '.description // ""')
+
+              enc_name=$(printf '%s' "$name" | jq -sRr @uri)
+
+              if gh api -X PATCH -H "Accept: application/vnd.github+json" \
+                "/repos/$ORG/$repo/labels/$enc_name" \
+                -f new_name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1; then
+                echo "  updated: $name"
+              else
+                if gh api -X POST -H "Accept: application/vnd.github+json" \
+                  "/repos/$ORG/$repo/labels" \
+                  -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1; then
+                  echo "  created: $name"
+                else
+                  echo "  FAILED: $name"
+                fi
+              fi
+            done
+
+            synced=$((synced + 1))
+          done
+
+          echo ""
+          echo "Done."
+          echo "Repos synced:  $synced"
+          echo "Repos skipped: $skipped"
