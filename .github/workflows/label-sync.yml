@@ -1,15 +1,15 @@
-name: Sync Labels
+name: Sync labels across org (blacklist)
 
 on:
   workflow_dispatch:
 
 permissions:
-  issues: write
   contents: read
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Generate GitHub App token
         uses: actions/create-github-app-token@v1
@@ -18,29 +18,112 @@ jobs:
           app-id: ${{ secrets.LABEL_SYNC_APP_ID }}
           private-key: ${{ secrets.LABEL_SYNC_PRIVATE_KEY }}
 
-      - name: Compute target repos (blacklist)
-        id: repos
+      - name: Sync labels to all repos (except blacklist)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+          # === Configure these ===
           ORG: Achrobat
+          SOURCE_REPO: Achrobat/Test-Repo
+
+          # Comma-separated repo names (NOT nameWithOwner)
+          # Example: "label-source-repo,do-not-touch,archived-repo"
           BLACKLIST: "Test-Repo"
         run: |
-          repos=$(gh repo list "$ORG" --limit 1000 --json nameWithOwner,isArchived \
-            --jq '.[] | select(.isArchived == false) | .nameWithOwner')
+          set -euo pipefail
 
-          pattern=$(echo "$BLACKLIST" | tr ',' '|')
-          targets=$(echo "$repos" | grep -Ev "$pattern" || true)
+          echo "Fetching labels from source repo: $SOURCE_REPO"
 
-          {
-            echo "targets<<EOF"
-            echo "$targets"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          # Fetch ALL labels from the source repo (handles pagination)
+          src_labels="[]"
+          page=1
+          while : ; do
+            chunk=$(gh api -H "Accept: application/vnd.github+json" \
+              "/repos/$SOURCE_REPO/labels?per_page=100&page=$page")
+            count=$(echo "$chunk" | jq 'length')
+            if [ "$count" -eq 0 ]; then
+              break
+            fi
+            src_labels=$(jq -s '.[0] + .[1]' <(echo "$src_labels") <(echo "$chunk"))
+            page=$((page+1))
+          done
 
-      - name: Sync labels
-        uses: EndBug/label-sync@v2
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          source-repo: Achrobat/Test-Repo
-          target-repos: ${{ steps.repos.outputs.targets }}
-          delete-other-labels: false
+          total=$(echo "$src_labels" | jq 'length')
+          echo "Source labels found: $total"
+
+          if [ "$total" -eq 0 ]; then
+            echo "No labels found in source repo; aborting."
+            exit 1
+          fi
+
+          # Build blacklist set
+          IFS=',' read -r -a bl <<< "${BLACKLIST}"
+          is_blacklisted() {
+            local name="$1"
+            for x in "${bl[@]}"; do
+              # trim spaces
+              x="$(echo "$x" | sed 's/^ *//;s/ *$//')"
+              if [ "$name" = "$x" ]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          echo "Listing repos in org: $ORG"
+
+          # List repos in org (skip archived)
+          repos=$(gh api -H "Accept: application/vnd.github+json" \
+            "/orgs/$ORG/repos?per_page=100&page=1" --paginate \
+            | jq -r '.[] | select(.archived == false) | .name')
+
+          synced=0
+          skipped=0
+          failed=0
+
+          for repo in $repos; do
+            if is_blacklisted "$repo"; then
+              echo "Skipping blacklisted repo: $ORG/$repo"
+              skipped=$((skipped+1))
+              continue
+            fi
+
+            echo ""
+            echo "== Syncing labels to $ORG/$repo =="
+
+            # Apply each source label to target repo
+            # Create if missing; update if exists (color/description)
+            # NOTE: We do NOT delete extra labels in target.
+            echo "$src_labels" | jq -c '.[] | {name, color, description}' | while read -r label; do
+              name=$(echo "$label" | jq -r '.name')
+              color=$(echo "$label" | jq -r '.color')
+              desc=$(echo "$label" | jq -r '.description // ""')
+
+              # URL-encode label name for the endpoint path (spaces etc)
+              enc_name=$(printf '%s' "$name" | jq -sRr @uri)
+
+              # Try update first (works if label exists)
+              if gh api -X PATCH -H "Accept: application/vnd.github+json" \
+                "/repos/$ORG/$repo/labels/$enc_name" \
+                -f new_name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1; then
+                echo "  updated: $name"
+              else
+                # If update fails (likely missing), create it
+                if gh api -X POST -H "Accept: application/vnd.github+json" \
+                  "/repos/$ORG/$repo/labels" \
+                  -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1; then
+                  echo "  created: $name"
+                else
+                  echo "  FAILED: $name"
+                  # Don't exit the whole job for a single label; keep going
+                fi
+              fi
+            done
+
+            synced=$((synced+1))
+          done
+
+          echo ""
+          echo "Done."
+          echo "Repos synced:  $synced"
+          echo "Repos skipped: $skipped"
