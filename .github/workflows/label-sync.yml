@@ -1,0 +1,28 @@
+name: Sync Labels (Test)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.LABEL_SYNC_APP_ID }}
+          private-key: ${{ secrets.LABEL_SYNC_PRIVATE_KEY }}
+
+      - name: Sync labels
+        uses: EndBug/label-sync@v2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          source-repo: Achrobat/label-source-repo
+          target-repos: |
+            Achrobat/repo-one
+            Achrobat/repo-two
+          delete-other-labels: false
