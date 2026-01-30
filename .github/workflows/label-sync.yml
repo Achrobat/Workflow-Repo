@@ -23,7 +23,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: Achrobat
-          BLACKLIST: "label-source-repo"
+          BLACKLIST: "Test-Repo"
         run: |
           repos=$(gh repo list "$ORG" --limit 1000 --json nameWithOwner,isArchived \
             --jq '.[] | select(.isArchived == false) | .nameWithOwner')
@@ -41,6 +41,6 @@ jobs:
         uses: EndBug/label-sync@v2
         with:
           token: ${{ steps.app-token.outputs.token }}
-          source-repo: Achrobat/label-source-repo
+          source-repo: Achrobat/Test-Repo
           target-repos: ${{ steps.repos.outputs.targets }}
           delete-other-labels: false
