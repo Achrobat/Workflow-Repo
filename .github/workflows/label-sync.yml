@@ -35,7 +35,7 @@ jobs:
 
           echo "Fetching labels from source repo: $SOURCE_REPO"
 
-          # Fetch ALL labels from the source repo (pagination handled by --paginate)
+          # Fetch ALL labels from the source repo (pagination normalized into a single array)
           src_labels=$(gh api -H "Accept: application/vnd.github+json" \
             "/repos/$SOURCE_REPO/labels?per_page=100" --paginate \
             | jq -s 'add')
@@ -66,10 +66,10 @@ jobs:
 
           echo "Listing repos in org: $ORG"
 
-          # List repos in org (skip archived)
+          # List repos in org (skip archived) — normalize pagination into a single array
           repos=$(gh api -H "Accept: application/vnd.github+json" \
             "/orgs/$ORG/repos?per_page=100" --paginate \
-            | jq -r '.[] | select(.archived == false) | .name')
+            | jq -s 'add | .[] | select(.archived == false) | .name')
 
           synced=0
           skipped=0
@@ -85,8 +85,10 @@ jobs:
             echo "== Syncing labels to $ORG/$repo =="
 
             # Fetch target labels once (used for both default deletion + case-insensitive update)
+            # IMPORTANT: normalize pagination into a single JSON array with jq -s 'add'
             tgt_json=$(gh api -H "Accept: application/vnd.github+json" \
-              "/repos/$ORG/$repo/labels?per_page=100" --paginate)
+              "/repos/$ORG/$repo/labels?per_page=100" --paginate \
+              | jq -s 'add')
 
             # TSV: "<lowercase>\t<actual>"
             tgt_map=$(echo "$tgt_json" | jq -r '.[] | [.name|ascii_downcase, .name] | @tsv')
