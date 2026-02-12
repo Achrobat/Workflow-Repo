@@ -2,6 +2,9 @@ name: Check for image compression
 
 on:
   workflow_call:
+    secrets:
+      IMAGE_TOKEN:
+        required: true
 
 jobs:
   compress:
