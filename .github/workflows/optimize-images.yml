@@ -84,6 +84,6 @@ jobs:
           gh pr comment "${{ github.event.pull_request.number }}" -F pr-message.log || true
         shell: bash # ensures set -eo pipefail
         env:
-          GH_TOKEN: ${{ secrets.LABEL_SYNC_PAT }}
+          GH_TOKEN: ${{ secrets.IMAGE_PAT }}
           PR_BRANCH: ${{ github.head_ref }}
           FIXED_BRANCH: ${{ github.head_ref }}-image-compression
