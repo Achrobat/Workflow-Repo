@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.IMAGE_TOKEN }}
+          fetch-depth: 0
 
       - name: Install optipng
         run: |
@@ -21,24 +24,26 @@ jobs:
       - name: Get PNG files
         id: get_png_files
         run: |
-          png_files=$(mktemp) &&
+          png_files=$(mktemp)
           {
-            if [ "${{ github.event_name }}" = pull_request ] &&
-               [ "${{ !github.event.pull_request.draft }}" = true ]; then
-              git fetch origin "$GITHUB_BASE_REF:$GITHUB_BASE_REF" &&
-              git diff --name-only --diff-filter=AM --no-renames "origin/$GITHUB_BASE_REF" -- '*.png'
+            # In a reusable workflow, github.event_name is "workflow_call".
+            # We can still access PR context when invoked from a PR-triggered caller.
+            if [ -n "${{ github.base_ref }}" ] && [ "${{ !github.event.pull_request.draft }}" = true ]; then
+              git fetch origin "${{ github.base_ref }}:${{ github.base_ref }}"
+              git diff --name-only --diff-filter=AM --no-renames "origin/${{ github.base_ref }}" -- '*.png'
             else
               find "$GITHUB_WORKSPACE" -type f -name "*.png" ! -path "$GITHUB_WORKSPACE/.git/*" -print 2> /dev/null || :
             fi
-          } > "$png_files" &&
+          } > "$png_files"
           printf 'png_files=%s\n' "$png_files" >> "$GITHUB_OUTPUT"
 
       - name: Optimize PNG files
         id: optimize_png
         run: |
-          lf="$(printf '\nx')"&&lf=${lf%?}
-          png_files=${{ steps.get_png_files.outputs.png_files }}
+          lf="$(printf '\nx')" && lf=${lf%?}
+          png_files="${{ steps.get_png_files.outputs.png_files }}"
           trap 'rm -f -- "$png_files"' EXIT INT
+
           failed_files=""
           while IFS= read -r file; do
             [ -n "$file" ] || continue
@@ -62,28 +67,45 @@ jobs:
         id: check_changes
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            echo "needs_compression=true"
+            echo "needs_compression=true" >> "$GITHUB_OUTPUT"
           else
-            echo "needs_compression=false"
-          fi >> "$GITHUB_OUTPUT"
+            echo "needs_compression=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Pull Request if Needed
-        if: ${{ steps.check_changes.outputs.needs_compression == 'true' && github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+        # Only run when invoked from a PR (base_ref exists), not draft, and changes detected
+        if: ${{ steps.check_changes.outputs.needs_compression == 'true' && github.base_ref != '' && !github.event.pull_request.draft }}
+        shell: bash
+        env:
+          # Force gh to use PAT; prevent fallback to Actions token (github-actions[bot])
+          GH_TOKEN: ${{ secrets.IMAGE_TOKEN }}
+          GITHUB_TOKEN: ""
+
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          BASE_BRANCH: ${{ github.base_ref }}
+          FIXED_BRANCH: ${{ github.head_ref }}-image-compression
         run: |
+          set -euo pipefail
+
           git config user.name "GitHub GTNH Actions"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com" &&
-          git switch -c "${FIXED_BRANCH}"
-          git commit -am "optimizing images"
-          git push --force-with-lease origin "${FIXED_BRANCH}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+
+          # Recreate the fixed branch deterministically
+          git switch -C "${FIXED_BRANCH}"
+          git commit -am "optimizing images" || exit 0
+
+          # Avoid "stale info" from --force-with-lease by refreshing remote refs
+          git fetch origin "${FIXED_BRANCH}" || true
+          git push --force origin "${FIXED_BRANCH}"
+
+          # Create PR from fixed branch into the original PR's base branch
           gh pr create \
             --head "${FIXED_BRANCH}" \
-            --base "${PR_BRANCH}" \
-            --title "Optimising images contained in ${PR_BRANCH} for #${{ github.event.pull_request.number }}" \
-            --body "Automatic image compression, applies to PR #${{ github.event.pull_request.number }}" \
+            --base "${BASE_BRANCH}" \
+            --title "Optimising images for #${PR_NUMBER}" \
+            --body "Automatic image compression, applies to PR #${PR_NUMBER}" \
             2>&1 | tee pr-message.log || true
-          gh pr comment "${{ github.event.pull_request.number }}" -F pr-message.log || true
-        shell: bash # ensures set -eo pipefail
-        env:
-          GH_TOKEN: ${{ secrets.IMAGE_TOKEN }}
-          PR_BRANCH: ${{ github.head_ref }}
-          FIXED_BRANCH: ${{ github.head_ref }}-image-compression
+
+          # Comment back on the original PR with the result
+          gh pr comment "${PR_NUMBER}" -F pr-message.log || true
