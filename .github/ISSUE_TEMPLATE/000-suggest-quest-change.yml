@@ -3,16 +3,13 @@ description: Suggest an addition, amendment, or removal of a quest.
 labels:
   - "Status: Triage"
   - "Suggestion"
-  - "Quests"
+  - "Type: Quest"
 
 body:
   - type: markdown
     attributes:
       value: |
         Use this form to suggest a **Quest Addition**, **Quest Amendment**, or **Quest Removal**.
-
-        If your issue is game-breaking (e.g., quest cannot be completed, rewards not given, progression locked),
-        please use the **Report Bug** template instead.
 
   - type: input
     id: title
@@ -35,7 +32,7 @@ body:
     attributes:
       label: Your Pack Version
       description: What version of the pack are you playing?
-      placeholder: "Example: 2.5.1"
+      placeholder: "Example: 2.8.4"
     validations:
       required: true
 
@@ -43,7 +40,7 @@ body:
     id: change_type
     attributes:
       label: Type of Quest Change
-      description: Select the type of quest change you are suggesting.
+      description: Select the type of quest change you are suggesting. A "Quest Amendment" refers to any type of change to an existing quest whether it's do to with description, task, rewards or requisites.
       options:
         - Quest Addition
         - Quest Amendment
@@ -55,8 +52,8 @@ body:
     id: quest_name
     attributes:
       label: Quest Name
-      description: The exact name of the quest.
-      placeholder: "Example: Power Through EV"
+      description: The exact name of the quest, or proposed name if making a quest addition suggestion.
+      placeholder: "Example: Your First Night"
     validations:
       required: true
 
@@ -64,8 +61,8 @@ body:
     id: quest_id
     attributes:
       label: Quest ID (Optional)
-      description: If known, provide the internal quest ID.
-      placeholder: "Example: 12345"
+      description: If known, provide the internal quest ID. You can copy this to clipboard by right-clicking the quest in game and selecting "Copy Quest ID".
+      placeholder: "Example: AAAAAAAAAAAAAAAAAAAAAA=="
 
   - type: textarea
     id: reality
