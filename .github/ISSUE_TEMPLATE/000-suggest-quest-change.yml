@@ -4,6 +4,8 @@ labels:
   - "Status: Triage"
   - "Suggestion"
   - "Type: Quest"
+projects:
+  - "Achrobat/1"
 
 body:
   - type: markdown
@@ -60,7 +62,7 @@ body:
   - type: input
     id: quest_id
     attributes:
-      label: Quest ID (Optional)
+      label: Quest ID
       description: If known, provide the internal quest ID. You can copy this to clipboard by right-clicking the quest in game and selecting "Copy Quest ID".
       placeholder: "Example: AAAAAAAAAAAAAAAAAAAAAA=="
 
