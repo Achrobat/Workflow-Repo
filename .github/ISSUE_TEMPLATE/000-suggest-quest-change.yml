@@ -23,13 +23,6 @@ body:
       required: true
 
   - type: input
-    id: discord
-    attributes:
-      label: Your GTNH Discord Username
-      description: Leave empty if you don't have one, but this makes it easier to contact you if clarification is needed.
-      placeholder: "Example: Fake"
-
-  - type: input
     id: version
     attributes:
       label: Your Pack Version
