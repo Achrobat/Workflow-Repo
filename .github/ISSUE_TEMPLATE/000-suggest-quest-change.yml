@@ -14,13 +14,11 @@ body:
         Use this form to suggest a **Quest Addition**, **Quest Amendment**, or **Quest Removal**.
 
   - type: input
-    id: title
+    id: discord
     attributes:
-      label: Title
-      description: A short descriptive title for your quest suggestion.
-      placeholder: "Example: Adjust EV Power Quest Requirements"
-    validations:
-      required: true
+      label: Your GTNH Discord Username
+      description: Leave empty if you don't have one, but this makes it easier to contact you if clarification is needed.
+      placeholder: "Example: Fake"
 
   - type: input
     id: version
