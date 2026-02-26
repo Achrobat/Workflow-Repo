@@ -35,7 +35,7 @@ body:
     id: change_type
     attributes:
       label: Type of Quest Change
-      description: Select the type of quest change you are suggesting. A "Quest Amendment" refers to any type of change to an existing quest whether it's do to with description, task, rewards or requisites.
+      description: Select the type of quest change you are suggesting. A "Quest Amendment" refers to any type of change to an existing quest whether it's to do with description, task, rewards, or requisites.
       options:
         - Quest Addition
         - Quest Amendment
@@ -59,7 +59,7 @@ body:
       description: If known, provide the internal quest ID. You can copy this to clipboard by right-clicking the quest in game and selecting "Copy Quest ID".
       placeholder: "Example: AAAAAAAAAAAAAAAAAAAAAA=="
 
-   - type: textarea
+  - type: textarea
     id: proposal
     attributes:
       label: Your Proposal
