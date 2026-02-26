@@ -38,6 +38,7 @@ body:
         - Quest Addition
         - Quest Amendment
         - Quest Removal
+      default: 1
     validations:
       required: true
 
