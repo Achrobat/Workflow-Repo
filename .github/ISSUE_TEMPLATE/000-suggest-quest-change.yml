@@ -70,17 +70,6 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: proposal
-    attributes:
-      label: Your Proposal
-      description: What specific change are you proposing?
-      placeholder: |
-        Example:
-        Reduce requirement to 32 HV circuits and adjust reward to 2 EV circuits.
-    validations:
-      required: true
-
   - type: checkboxes
     id: final
     attributes:
