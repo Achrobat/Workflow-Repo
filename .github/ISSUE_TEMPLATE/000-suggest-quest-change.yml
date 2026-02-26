@@ -33,7 +33,7 @@ body:
     id: change_type
     attributes:
       label: Type of Quest Change
-      description: Select the type of quest change you are suggesting. A "Quest Amendment" refers to any type of change to an existing quest whether it's to do with description, task, rewards, or requisites.
+      description: Select the type of quest change you are suggesting. A "Quest Amendment" refers to any type of change to an existing quest whether it's to do with the title, description, task, rewards, or pre-requisites.
       options:
         - Quest Addition
         - Quest Amendment
@@ -64,7 +64,7 @@ body:
       description: What specific change are you proposing?
       placeholder: |
         Example:
-        Reduce requirement to 32 HV circuits and adjust reward to 2 EV circuits.
+        The link to the spreadsheet wiki is outdated, it should be www.gtnewhorizons.com/spreadsheet.
     validations:
       required: true
 
