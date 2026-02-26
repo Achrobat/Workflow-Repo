@@ -32,7 +32,7 @@ body:
   - type: dropdown
     id: change_type
     attributes:
-      label: Type of Quest Change
+      label: Type of Questbook Change
       description: Select the type of quest change you are suggesting. A "Quest Amendment" refers to any type of change to an existing quest whether it's to do with the title, description, task, rewards, or pre-requisites.
       options:
         - Quest Addition
@@ -73,7 +73,7 @@ body:
       label: Final Checklist
       description: Please confirm the following.
       options:
-        - label: "I believe this change would improve the overall pack experience."
+        - label: "I believe this change would improve the overall questing experience."
           required: true
         - label: "I understand this suggestion may not be implemented."
           required: true
