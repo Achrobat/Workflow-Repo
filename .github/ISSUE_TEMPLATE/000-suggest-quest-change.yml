@@ -62,9 +62,7 @@ body:
     attributes:
       label: Your Proposal
       description: What specific change are you proposing?
-      placeholder: |
-        Example:
-        The link to the spreadsheet wiki is outdated, it should be www.gtnewhorizons.com/spreadsheet.
+      placeholder: "Example: The link to the spreadsheet wiki is outdated, it should be www.gtnewhorizons.com/spreadsheet."
     validations:
       required: true
 
