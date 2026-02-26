@@ -59,14 +59,14 @@ body:
       description: If known, provide the internal quest ID. You can copy this to clipboard by right-clicking the quest in game and selecting "Copy Quest ID".
       placeholder: "Example: AAAAAAAAAAAAAAAAAAAAAA=="
 
-  - type: textarea
-    id: reality
+   - type: textarea
+    id: proposal
     attributes:
-      label: The Reality
-      description: Describe the current state of the quest. What does it currently require or reward?
+      label: Your Proposal
+      description: What specific change are you proposing?
       placeholder: |
         Example:
-        The quest currently requires 64 HV circuits and rewards 4 EV circuits.
+        Reduce requirement to 32 HV circuits and adjust reward to 2 EV circuits.
     validations:
       required: true
 
@@ -76,11 +76,9 @@ body:
       label: Final Checklist
       description: Please confirm the following.
       options:
-        - label: "I have searched the issue tracker and there is no similar quest suggestion already."
+        - label: "I have searched the issue tracker and there is no similar issue already."
           required: true
-        - label: "I understand this suggestion may not be implemented."
+        - label: "I understand this may not be implemented."
           required: true
-        - label: "I understand this suggestion may be rejected based on community feedback."
-          required: true
-        - label: "I believe this change would improve the questing experience."
+        - label: "I believe this change would improve the questbook experience."
           required: true
